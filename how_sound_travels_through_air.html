@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How sound travels through air</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f6f2; --ink:#1f2933; --muted:#5b6672; --card:#ffffff; --line:#e3e0d8;
+    --particle:#3d4b5c; --track:#d9480f; --comp:#1c6dd0; --rare:#c27c0e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;}
+  main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+  h1{font-size:clamp(1.4rem,3vw,2rem);margin:0 0 6px}
+  .sub{margin:0 0 16px;color:var(--muted);font-size:clamp(.95rem,1.6vw,1.1rem);max-width:70ch;line-height:1.45}
+  .stage{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  canvas{display:block;width:100%}
+  .controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center;margin:14px 0 6px}
+  .btns{display:flex;gap:8px}
+  button{font:inherit;font-weight:700;font-size:.95rem;border:1px solid var(--line);background:var(--card);
+    color:var(--ink);padding:8px 14px;border-radius:999px;cursor:pointer}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button[aria-pressed="true"]{background:#e9eef6;border-color:#b9c7dc}
+  .slider{display:flex;flex-direction:column;gap:2px;min-width:180px;flex:1 1 180px;max-width:260px}
+  .slider label{font-weight:700;font-size:.9rem}
+  .slider .ends{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted)}
+  input[type=range]{width:100%;accent-color:var(--ink)}
+  .toggles{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.92rem}
+  .toggles label{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:18px}
+  .note{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;line-height:1.45;font-size:.95rem}
+  .note b{display:block;margin-bottom:4px}
+  .key{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px}
+</style>
+</head>
+<body>
+<main>
+  <h1>How sound travels through air</h1>
+  <p class="sub">A vibrating source pushes and pulls on the air particles next to it. What moves outwards is the <em>pattern</em> of squashed and spread-out air. This is energy being transferred from one particle to another, eventually reachin your ear. Note that each particle just moves back and forth around the same spot.</p>
+  <p class="sub">With (voiced) speech sounds, the lungs build up pressure below the closed vocal folds. That pressure forces the folds apart, a little puff of air escapes, and the folds snap shut again. This repeats very fast. Each puff is one push, so it creates one compression, just like one push of the speaker cone in the animation. (This is a simplification of what's known as the <a href="https://www.voicescience.org/lexicon/bernoulli-effect/">Bernoulli effect</a>)</p>
+  <p class="sub">The number of puffs per second is the <strong>fundamental frequency</strong>, which we hear as pitch: very roughly 100 a second for a typical male voice and 200 for a typical female voice.</p>
+
+  <div class="stage" id="stage"><canvas id="c" aria-label="Animation of air particles carrying a sound wave from a loudspeaker"></canvas></div>
+
+  <div class="controls">
+    <div class="btns">
+      <button id="play" class="primary">Pause</button>
+      <button id="restart">Restart</button>
+      <button id="slow" aria-pressed="false">Slow motion</button>
+    </div>
+    <div class="slider">
+      <label for="freq">Pitch (frequency)</label>
+      <input id="freq" type="range" min="0.4" max="1.6" step="0.01" value="0.8">
+      <div class="ends"><span>low</span><span>high</span></div>
+    </div>
+    <div class="slider">
+      <label for="amp">Loudness (amplitude)</label>
+      <input id="amp" type="range" min="0.1" max="1" step="0.01" value="0.7">
+      <div class="ends"><span>quiet</span><span>loud</span></div>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="labels" checked> Show compressions &amp; rarefactions</label>
+      <label><input type="checkbox" id="track" checked> Follow a few particles</label>
+      <label><input type="checkbox" id="graph" checked> Show pressure graph</label>
+    </div>
+  </div>
+
+  <section class="notes">
+    <div class="note"><b><span class="key" style="background:var(--track)"></span>Particles stay put</b>Watch the orange particles. Each one wobbles around its own resting place (the small ring) and never travels with the wave. The energy is passed along from particle to particle.</div>
+    <div class="note"><b><span class="key" style="background:var(--comp)"></span>Compression and <span class="key" style="background:var(--rare);margin-left:2px"></span>rarefaction</b>Where particles bunch up, air pressure is higher (compression). Where they spread out, it is lower (rarefaction). The graph traces these ups and downs. This is the same wave shape we draw for sound.</div>
+    <div class="note"><b>Pitch and loudness</b>Raising the pitch makes the speaker vibrate more often, so compressions are packed closer together (shorter wavelength). Raising the loudness makes each push bigger, so particles move further and the pressure swings are larger <em>but the rate of swings stays the same</em>. Try changing one while the wave is moving.</div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  const stage = document.getElementById('stage');
+  const css = getComputedStyle(document.documentElement);
+  const COL = {
+    particle: css.getPropertyValue('--particle').trim(),
+    track: css.getPropertyValue('--track').trim(),
+    comp: css.getPropertyValue('--comp').trim(),
+    rare: css.getPropertyValue('--rare').trim(),
+    ink: css.getPropertyValue('--ink').trim(),
+    muted: css.getPropertyValue('--muted').trim(),
+    line: css.getPropertyValue('--line').trim()
+  };
+
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const S = {
+    playing: !reduce, slow: false,
+    freq: 0.8, amp: 0.7,
+    labels: true, track: true, graph: true,
+    t: 0, phase: 0
+  };
+  let hist = [];               // emitted source states: {t, ph, A}
+  let W = 0, H = 0, dpr = 1;
+  let field, graph, sx, c, particles = [], tracked = [];
+
+  function rng(seed){ return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+
+  function layout(){
+    const r = stage.getBoundingClientRect();
+    W = Math.max(300, r.width);
+    H = Math.round(Math.max(330, Math.min(540, W * 0.56)));
+    dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const spk = Math.max(46, Math.min(90, W * 0.08));
+    const fieldBottom = S.graph ? Math.round(H * 0.66) : H - 16;
+    field = { x0: spk + 14, x1: W - 14, y0: 34, y1: fieldBottom };
+    graph = { x0: field.x0, x1: field.x1, y0: fieldBottom + 30, y1: H - 14 };
+    sx = field.x0 - 6;                       // speaker face (rest position)
+    c = (field.x1 - sx) / 6.5;               // wave crosses the field in ~6.5 s
+    makeParticles();
+  }
+
+  function makeParticles(){
+    particles = [];
+    const rand = rng(7);
+    const s = Math.max(9, Math.min(13, W / 85));
+    for (let y = field.y0 + s / 2; y < field.y1; y += s){
+      for (let x = field.x0 + s / 2; x < field.x1; x += s){
+        particles.push({ x: x + (rand() - 0.5) * s * 0.55, y: y + (rand() - 0.5) * s * 0.55 });
+      }
+    }
+    // pick a few particles near the middle row to follow
+    tracked = [];
+    const midY = (field.y0 + field.y1) / 2;
+    [0.18, 0.42, 0.66, 0.88].forEach(f => {
+      const tx = field.x0 + f * (field.x1 - field.x0);
+      let best = null, bd = Infinity;
+      for (const p of particles){
+        const d = Math.hypot(p.x - tx, (p.y - midY) * 2);
+        if (d < bd){ bd = d; best = p; }
+      }
+      if (best) tracked.push(best);
+    });
+  }
+
+  // Amplitude in px, capped so particles never overtake their neighbours (A·k < 1)
+  function ampPx(){
+    const lambda = c / S.freq;
+    return S.amp * Math.min(20, 0.8 * lambda / (2 * Math.PI));
+  }
+
+  // Source state at time tq (interpolated from history)
+  function srcAt(tq){
+    if (tq < 0 || hist.length === 0) return null;
+    if (tq <= hist[0].t) return hist[0];
+    const n = hist.length;
+    if (tq >= hist[n - 1].t) return hist[n - 1];
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1){ const m = (lo + hi) >> 1; if (hist[m].t <= tq) lo = m; else hi = m; }
+    const a = hist[lo], b = hist[hi], u = (tq - a.t) / (b.t - a.t || 1);
+    return { ph: a.ph + (b.ph - a.ph) * u, A: a.A + (b.A - a.A) * u };
+  }
+
+  function disp(x){
+    const s = srcAt(S.t - (x - sx) / c);
+    return s ? s.A * Math.sin(s.ph) : 0;
+  }
+  // relative pressure ~ -(d displacement / dx); 0 = normal air pressure
+  function pressure(x){ const h = 1.5; return -(disp(x + h) - disp(x - h)) / (2 * h); }
+
+  function step(dt){
+    const k = S.slow ? 0.3 : 1;
+    dt = Math.min(dt, 0.05) * k;
+    S.t += dt;
+    S.phase += 2 * Math.PI * S.freq * dt;
+    hist.push({ t: S.t, ph: S.phase, A: ampPx() * Math.min(1, S.phase / (2 * Math.PI)) });
+    const keep = S.t - (field.x1 - sx + 40) / c - 0.5;
+    while (hist.length > 2 && hist[1].t < keep) hist.shift();
+  }
+
+  function restart(){
+    S.t = 0; S.phase = 0; hist = [{ t: 0, ph: 0, A: 0 }];
+  }
+
+  function drawSpeaker(d){
+    const cy = (field.y0 + field.y1) / 2;
+    const h = Math.min(150, (field.y1 - field.y0) * 0.6);
+    const bx = 10, bw = sx - 26;
+    ctx.fillStyle = COL.ink;
+    ctx.beginPath(); ctx.roundRect(bx, cy - h * 0.22, bw * 0.55, h * 0.44, 4); ctx.fill();
+    // cone
+    const face = sx + d;
+    ctx.fillStyle = '#5c6a79';
+    ctx.beginPath();
+    ctx.moveTo(bx + bw * 0.55, cy - h * 0.16);
+    ctx.lineTo(face, cy - h / 2);
+    ctx.lineTo(face, cy + h / 2);
+    ctx.lineTo(bx + bw * 0.55, cy + h * 0.16);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = COL.ink; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(face, cy - h / 2); ctx.lineTo(face, cy + h / 2); ctx.stroke();
+    ctx.fillStyle = COL.muted; ctx.font = '700 12px "Atkinson Hyperlegible", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('source', (bx + face) / 2, cy + h / 2 + 18);
+  }
+
+  function draw(){
+    ctx.clearRect(0, 0, W, H);
+
+    // sample pressure across the field
+    const stepX = 3, xs = [], ps = [];
+    for (let x = field.x0; x <= field.x1; x += stepX){ xs.push(x); ps.push(pressure(x)); }
+    const pRef = 0.8;
+
+    // compression / rarefaction shading
+    if (S.labels){
+      for (let i = 0; i < xs.length; i++){
+        const p = ps[i]; if (Math.abs(p) < 0.01) continue;
+        const a = Math.min(1, Math.abs(p) / pRef) * 0.22;
+        ctx.fillStyle = p > 0 ? `rgba(28,109,208,${a})` : `rgba(194,124,14,${a})`;
+        ctx.fillRect(xs[i] - stepX / 2, field.y0 - 6, stepX + 0.5, field.y1 - field.y0 + 12);
+      }
+    }
+
+    // particles
+    const pr = Math.max(2.2, Math.min(3.2, W / 330));
+    ctx.fillStyle = COL.particle;
+    ctx.beginPath();
+    for (const p of particles){
+      const x = p.x + disp(p.x);
+      ctx.moveTo(x + pr, p.y); ctx.arc(x, p.y, pr, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    // tracked particles
+    if (S.track){
+      for (const p of tracked){
+        const A = ampPx();
+        ctx.strokeStyle = 'rgba(217,72,15,0.35)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(p.x - A, p.y); ctx.lineTo(p.x + A, p.y); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x, p.y, pr + 4, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = COL.track;
+        ctx.beginPath(); ctx.arc(p.x + disp(p.x), p.y, pr + 2.6, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    // labels for compressions (C) and rarefactions (R)
+    if (S.labels){
+      const lambda = c / S.freq;
+      const long = lambda / 2 > 120;
+      ctx.font = '700 12px "Atkinson Hyperlegible", sans-serif';
+      ctx.textAlign = 'center';
+      let lastX = -1e9;
+      for (let i = 1; i < xs.length - 1; i++){
+        const p = ps[i];
+        if (Math.abs(p) < 0.18 * pRef) continue;
+        const isMax = p > 0 && p >= ps[i - 1] && p > ps[i + 1];
+        const isMin = p < 0 && p <= ps[i - 1] && p < ps[i + 1];
+        if (!(isMax || isMin) || xs[i] - lastX < 24) continue;
+        lastX = xs[i];
+        const txt = isMax ? (long ? 'compression' : 'C') : (long ? 'rarefaction' : 'R');
+        const w = ctx.measureText(txt).width + 14;
+        const x = Math.min(Math.max(xs[i], field.x0 + w / 2), field.x1 - w / 2);
+        ctx.fillStyle = isMax ? COL.comp : COL.rare;
+        ctx.beginPath(); ctx.roundRect(x - w / 2, 6, w, 20, 10); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.fillText(txt, x, 20);
+      }
+    }
+
+    // direction hint
+    if (S.t < 0.4 || hist.length < 3){
+      ctx.fillStyle = COL.muted; ctx.font = '700 14px "Atkinson Hyperlegible", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(S.playing ? 'wave travels this way →' : 'Press Play to start the source vibrating',
+        (field.x0 + field.x1) / 2, (field.y0 + field.y1) / 2);
+    }
+
+    drawSpeaker(srcAt(S.t) ? srcAt(S.t).A * Math.sin(srcAt(S.t).ph) : 0);
+
+    // pressure graph
+    if (S.graph){
+      const g = graph, mid = (g.y0 + g.y1) / 2, half = (g.y1 - g.y0) / 2 - 4;
+      ctx.strokeStyle = COL.line; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(g.x0, g.y0 - 10); ctx.lineTo(g.x1, g.y0 - 10); ctx.stroke();
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = '#b8b3a7';
+      ctx.beginPath(); ctx.moveTo(g.x0, mid); ctx.lineTo(g.x1, mid); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = '700 12px "Atkinson Hyperlegible", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = COL.comp; ctx.fillText('higher pressure', g.x0 - 50 > 0 && W > 600 ? g.x0 - 60 : 8, g.y0 + 4);
+      ctx.fillStyle = COL.rare; ctx.fillText('lower pressure', W > 600 ? g.x0 - 60 : 8, g.y1);
+      ctx.fillStyle = COL.muted; ctx.textAlign = 'right';
+      ctx.fillText('normal', g.x1, mid - 6);
+      ctx.strokeStyle = COL.ink; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < xs.length; i++){
+        const y = mid - Math.max(-1.1, Math.min(1.1, ps[i] / pRef)) * half;
+        i ? ctx.lineTo(xs[i], y) : ctx.moveTo(xs[i], y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  let last = performance.now();
+  function frame(now){
+    const dt = (now - last) / 1000; last = now;
+    if (S.playing) step(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // controls
+  const $ = id => document.getElementById(id);
+  const playBtn = $('play');
+  function syncPlay(){ playBtn.textContent = S.playing ? 'Pause' : 'Play'; }
+  playBtn.onclick = () => { S.playing = !S.playing; syncPlay(); };
+  $('restart').onclick = () => { restart(); S.playing = true; syncPlay(); };
+  $('slow').onclick = e => { S.slow = !S.slow; e.currentTarget.setAttribute('aria-pressed', S.slow); };
+  $('freq').oninput = e => { S.freq = +e.target.value; };
+  $('amp').oninput = e => { S.amp = +e.target.value; };
+  $('labels').onchange = e => { S.labels = e.target.checked; };
+  $('track').onchange = e => { S.track = e.target.checked; };
+  $('graph').onchange = e => { S.graph = e.target.checked; layout(); };
+  if (!CanvasRenderingContext2D.prototype.roundRect){
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h){ this.rect(x, y, w, h); };
+  }
+
+  new ResizeObserver(() => layout()).observe(stage);
+  layout(); restart(); syncPlay();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
