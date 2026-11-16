@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How we make vowels: source + filter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="icon" type="image/x-icon" href="cat-favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f6f2; --ink:#1f2933; --muted:#5b6672; --card:#ffffff; --line:#e3e0d8;
+    --src:#1c6dd0; --fil:#d9480f; --out:#6741d9;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;}
+  main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+  h1{font-size:clamp(1.4rem,3vw,2rem);margin:0 0 6px}
+  .sub{margin:0 0 16px;color:var(--muted);font-size:clamp(.95rem,1.6vw,1.1rem);max-width:72ch;line-height:1.45}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px}
+  @media (max-width:760px){.grid{grid-template-columns:1fr}}
+  .stack{display:flex;flex-direction:column;gap:6px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px 8px}
+  .panel h2{font-size:1rem;margin:0 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .panel h2 small{font-weight:400;color:var(--muted);font-size:.85rem}
+  .op{text-align:center;font-weight:700;color:var(--muted);font-size:1.05rem;line-height:1}
+  canvas{display:block;width:100%}
+  .key{display:inline-block;width:10px;height:10px;border-radius:50%}
+  .controls{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;margin:14px 0 6px}
+  .group{display:flex;flex-direction:column;gap:6px}
+  .group > span{font-weight:700;font-size:.9rem}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  button{font:inherit;font-weight:700;font-size:.95rem;border:1px solid var(--line);background:var(--card);
+    color:var(--ink);padding:8px 14px;border-radius:999px;cursor:pointer}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button[aria-pressed="true"]{background:#efeafd;border-color:#b9a9ef;color:#3b2a8a}
+  .vowel{min-width:64px;text-align:center;line-height:1.15}
+  .vowel .ipa{font-size:1.15rem;display:block}
+  .vowel .kw{font-weight:400;font-size:.75rem;color:var(--muted);display:block;letter-spacing:.04em}
+  .slider{display:flex;flex-direction:column;gap:2px;min-width:200px;flex:1 1 200px;max-width:300px}
+  .slider label{font-weight:700;font-size:.9rem}
+  .slider .ends{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted)}
+  input[type=range]{width:100%;accent-color:var(--ink)}
+  .toggles{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.92rem}
+  .toggles label{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .readout{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:400}
+  .msg{font-size:.85rem;color:#a61e1e;min-height:1.1em;margin:2px 0 0}
+  .notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:18px}
+  .note{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;line-height:1.45;font-size:.95rem}
+  .note > b:first-child{display:block;margin-bottom:4px}
+  .note ul{margin:4px 0 0;padding-left:18px}
+  .foot{font-size:.8rem;color:var(--muted);margin-top:14px;line-height:1.4}
+</style>
+</head>
+<body>
+<main>
+  <h1>How we make vowels: source + filter</h1>
+  <p class="sub">Your voice has two separate parts. The <b>source</b> is the buzz from your vocal folds, and it sets the pitch. The <b>filter</b> is the shape of your mouth and throat, and it sets the vowel. Change one and the other stays the same. Press <b>Play</b> and try it.</p>
+
+  <div class="controls" style="margin-top:0">
+    <div class="group">
+      <span>Sound</span>
+      <div class="btns">
+        <button id="play" class="primary">Play</button>
+      </div>
+    </div>
+    <div class="group">
+      <span>Filter: choose a vowel</span>
+      <div class="btns" id="vowels"></div>
+    </div>
+  </div>
+  <div class="controls" style="margin-top:4px">
+    <div class="slider">
+      <label for="f0">Source: pitch <span class="readout" id="f0r">120 Hz</span></label>
+      <input id="f0" type="range" min="70" max="300" step="1" value="120">
+      <div class="ends"><span>low</span><span>high</span></div>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="whisper"> Whisper (no buzz, just breath)</label>
+      <label><input type="checkbox" id="nofilter"> Buzz only (take the filter away)</label>
+      <label><input type="checkbox" id="labels" checked> Label the formants</label>
+    </div>
+  </div>
+  <p class="msg" id="msg" role="status"></p>
+
+  <div class="grid">
+    <div class="stack">
+      <div class="panel">
+        <h2><span class="key" style="background:var(--src)"></span>1. Source <small id="srcCap">the buzz: evenly spaced harmonics</small></h2>
+        <canvas id="cSrc" aria-label="Spectrum of the source"></canvas>
+      </div>
+      <div class="op" aria-hidden="true">shaped by</div>
+      <div class="panel">
+        <h2><span class="key" style="background:var(--fil)"></span>2. Filter <small id="filCap">vocal tract shape</small></h2>
+        <canvas id="cFil" aria-label="Resonance curve of the vocal tract"></canvas>
+      </div>
+      <div class="op" aria-hidden="true">gives</div>
+      <div class="panel">
+        <h2><span class="key" style="background:var(--out)"></span>3. Output <small>the vowel we hear</small></h2>
+        <canvas id="cOut" aria-label="Spectrum of the output vowel"></canvas>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Spectrogram <small>like Praat: time runs left to right, darker = louder. Harmonics are the thin stripes, formants the dark bands</small></h2>
+      <canvas id="cSpg" aria-label="Scrolling spectrogram of the output"></canvas>
+    </div>
+  </div>
+
+  <section class="notes">
+    <div class="note"><b>Try this</b>
+      <ul>
+        <li>Pick a vowel, then drag the pitch. The harmonics squeeze together or spread apart, but the dark formant bands stay put.</li>
+        <li>Keep the pitch still and switch vowels. The harmonics don't move, but which ones are loud changes.</li>
+        <li>Tick <i>Whisper</i>. There's no pitch at all, and you can still hear the vowel.</li>
+      </ul>
+    </div>
+    <div class="note"><b><span class="key" style="background:var(--src)"></span> The source</b>The vocal folds open and close many times a second. That gives a buzz made of a stack of harmonics: the lowest is the pitch (F0), and the others sit at 2×, 3×, 4× … above it. On its own it sounds like a kazoo, not a vowel. Tick <i>Buzz only</i> to hear it.</div>
+    <div class="note"><b><span class="key" style="background:var(--fil)"></span> The filter</b>Your mouth and throat are a tube that resonates at some frequencies more than others. Those peaks are called <b>formants</b>. Moving your tongue and lips changes the tube's shape, so the peaks move. Low F1 means a high tongue, as in <i>fleece</i>. High F2 means a front tongue.</div>
+  </section>
+  <p class="foot">The formant values are approximate adult averages from Peterson &amp; Barney (1952), based on American English. Your own vowels may be different. For example, many British speakers have a much fronter GOOSE vowel, with a higher F2. The sound is a simple synthesis, so expect it to sound a bit robotic.</p>
+</main>
+
+<script>
+(() => {
+  const VOWELS = [
+    {ipa:'i', kw:'FLEECE',  F:[270,2290,3010]},
+    {ipa:'ɛ', kw:'DRESS',   F:[530,1840,2480]},
+    {ipa:'æ', kw:'TRAP',    F:[660,1720,2410]},
+    {ipa:'ɑ', kw:'PALM',    F:[730,1090,2440]},
+    {ipa:'ɔ', kw:'THOUGHT', F:[570,840,2410]},
+    {ipa:'u', kw:'GOOSE',   F:[300,870,2240]},
+  ];
+  const BW = [90,110,160], GAIN = [1, 0.55, 0.3];
+  const FMAX = 4000, DB = 48;
+  const css = getComputedStyle(document.documentElement);
+  const C = k => css.getPropertyValue(k).trim();
+  const COL = {src:C('--src'), fil:C('--fil'), out:C('--out'), ink:C('--ink'), muted:C('--muted'), line:C('--line')};
+
+  const S = { vowel:3, f0:120, whisper:false, nofilter:false, labels:true, playing:false };
+  const cur = { F:[...VOWELS[3].F], f0:120 };
+
+  const $ = id => document.getElementById(id);
+  const vbox = $('vowels');
+  VOWELS.forEach((v,i) => {
+    const b = document.createElement('button');
+    b.className = 'vowel'; b.setAttribute('aria-pressed', i===S.vowel);
+    b.setAttribute('aria-label', `Vowel ${v.ipa}, as in ${v.kw.toLowerCase()}`);
+    b.innerHTML = `<span class="ipa">[${v.ipa}]</span><span class="kw">${v.kw}</span>`;
+    b.onclick = () => { S.vowel = i; [...vbox.children].forEach((c,j)=>c.setAttribute('aria-pressed', j===i)); updateAudio(); caps(); };
+    vbox.appendChild(b);
+  });
+
+  function resp(f, F){
+    let r = 0.012;
+    for (let k=0;k<3;k++){ const Q = F[k]/BW[k], x = f/F[k] - F[k]/f; r += GAIN[k]/Math.sqrt(1+Q*Q*x*x); }
+    return r;
+  }
+  let nz = Array.from({length:202},()=>Math.random()), nzT = 0;
+  const db = a => Math.max(0, Math.min(1, (20*Math.log10(Math.max(a,1e-6)) + DB) / DB));
+
+  /* ---------- canvases ---------- */
+  const cv = {src:$('cSrc'), fil:$('cFil'), out:$('cOut'), spg:$('cSpg')};
+  const cx = {}; let dpr = 1;
+  const off = document.createElement('canvas'), offx = off.getContext('2d');
+  function layout(){
+    dpr = window.devicePixelRatio || 1;
+    for (const k of ['src','fil','out']){
+      const w = cv[k].clientWidth || 300, h = Math.round(Math.max(90, Math.min(130, w*0.28)));
+      cv[k].width = Math.round(w*dpr); cv[k].height = Math.round(h*dpr); cv[k].style.height = h+'px';
+      cx[k] = cv[k].getContext('2d'); cx[k].setTransform(dpr,0,0,dpr,0,0);
+      cx[k].W = w; cx[k].H = h;
+    }
+    const stackH = cv.src.parentElement.parentElement.clientHeight;
+    const w = cv.spg.clientWidth || 300;
+    const wide = window.innerWidth > 760;
+    const h = Math.round(wide ? Math.max(300, stackH - 46) : Math.max(260, w*0.75));
+    cv.spg.width = Math.round(w*dpr); cv.spg.height = Math.round(h*dpr); cv.spg.style.height = h+'px';
+    cx.spg = cv.spg.getContext('2d'); cx.spg.W = w; cx.spg.H = h;
+    const ow = off.width, oh = off.height;
+    const tmp = ow && oh ? (()=>{const t=document.createElement('canvas');t.width=ow;t.height=oh;t.getContext('2d').drawImage(off,0,0);return t;})() : null;
+    off.width = cv.spg.width; off.height = cv.spg.height;
+    offx.fillStyle = '#fff'; offx.fillRect(0,0,off.width,off.height);
+    if (tmp) offx.drawImage(tmp, off.width-ow, 0, ow, off.height);
+  }
+
+  const PADL = 34, PADB = 18, PADT = 16, PADR = 8;
+  function axes(c){
+    const {W,H} = c; c.clearRect(0,0,W,H);
+    c.strokeStyle = COL.line; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(PADL, H-PADB+.5); c.lineTo(W-PADR, H-PADB+.5); c.stroke();
+    c.fillStyle = COL.muted; c.font = '11px "Atkinson Hyperlegible", system-ui, sans-serif'; c.textAlign = 'center';
+    for (let k=0;k<=4;k++){ const x = fx(c,k*1000); c.fillText(k===0?'0':k+'k', x, H-4); }
+    c.textAlign = 'left';
+  }
+  const fx = (c,f) => PADL + (c.W-PADL-PADR) * f/FMAX;
+  const ay = (c,a) => (c.H-PADB) - (c.H-PADB-PADT) * a;
+
+  function harmonics(){ const n = Math.floor(FMAX/cur.f0); return Array.from({length:n},(_,i)=>(i+1)*cur.f0); }
+
+  function drawSpectra(){
+    const F = S.nofilter ? null : cur.F;
+    const flat = f => 1;
+    // source
+    let c = cx.src; axes(c);
+    if (S.whisper){
+      c.fillStyle = COL.src+'55'; c.strokeStyle = COL.src; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(PADL, ay(c,0));
+      for (let i=0;i<=200;i++){ const f = 20+i*FMAX/200; c.lineTo(fx(c,f), ay(c,db(0.45*(0.75+0.25*nz[i])))); }
+      c.lineTo(fx(c,FMAX), ay(c,0)); c.closePath(); c.fill(); c.stroke();
+    } else {
+      c.strokeStyle = COL.src; c.lineWidth = 2.5; c.lineCap = 'round';
+      harmonics().forEach((f,i) => { c.beginPath(); c.moveTo(fx(c,f), ay(c,0)); c.lineTo(fx(c,f), ay(c,db(1/(i+1)))); c.stroke(); });
+      c.fillStyle = COL.src; c.font = '11px "Atkinson Hyperlegible", system-ui, sans-serif';
+      c.fillText('F0 (pitch)', fx(c,cur.f0)-3, ay(c,1)-4);
+    }
+    // filter
+    c = cx.fil; axes(c);
+    c.strokeStyle = COL.fil; c.lineWidth = 2;
+    c.beginPath();
+    for (let f=20; f<=FMAX; f+=10){ const a = F ? db(resp(f,F)) : db(1); const x = fx(c,f), y = ay(c,a); f===20?c.moveTo(x,y):c.lineTo(x,y); }
+    c.stroke();
+    if (!F){ c.fillStyle = COL.muted; c.font = '12px "Atkinson Hyperlegible", system-ui, sans-serif'; c.fillText('Filter removed: everything passes through', PADL+8, ay(c,1)+18); }
+    if (F && S.labels){
+      c.fillStyle = COL.fil; c.font = '700 11px "Atkinson Hyperlegible", system-ui, sans-serif'; c.textAlign = 'center';
+      F.forEach((f,k)=> c.fillText('F'+(k+1), fx(c,f), ay(c,db(resp(f,F)))-4));
+      c.textAlign = 'left';
+    }
+    // output
+    c = cx.out; axes(c);
+    const R = f => F ? resp(f,F) : 1;
+    if (S.whisper){
+      c.fillStyle = COL.out+'55'; c.strokeStyle = COL.out; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(PADL, ay(c,0));
+      for (let i=0;i<=200;i++){ const f = 20+i*FMAX/200; c.lineTo(fx(c,f), ay(c, db(0.45*(0.75+0.25*nz[i])*R(f)))); }
+      c.lineTo(fx(c,FMAX), ay(c,0)); c.closePath(); c.fill(); c.stroke();
+    } else {
+      c.strokeStyle = COL.out; c.lineWidth = 2.5; c.lineCap = 'round';
+      harmonics().forEach((f,i) => { c.beginPath(); c.moveTo(fx(c,f), ay(c,0)); c.lineTo(fx(c,f), ay(c,db(R(f)/(i+1)))); c.stroke(); });
+    }
+    if (F){
+      c.strokeStyle = COL.fil+'99'; c.setLineDash([4,4]); c.lineWidth = 1;
+      c.beginPath(); for (let f=20; f<=FMAX; f+=10){ const x = fx(c,f), y = ay(c,db(resp(f,F))); f===20?c.moveTo(x,y):c.lineTo(x,y); } c.stroke(); c.setLineDash([]);
+    }
+  }
+
+  /* ---------- spectrogram ---------- */
+  let acc = 0;
+  function spgColumn(px){
+    const h = off.height, w = off.width;
+    offx.drawImage(off, -px, 0);
+    const img = offx.createImageData(px, h);
+    const F = S.nofilter ? null : cur.F;
+    const hzpp = FMAX / h;
+    const sig = Math.max(14, 1.3*hzpp*dpr/dpr);
+    for (let y=0; y<h; y++){
+      const f = FMAX * (1 - y/h);
+      let a;
+      if (S.whisper){ a = 0.45*(0.5+0.5*Math.random()) * (F?resp(f,F):1); }
+      else {
+        const n = Math.max(1, Math.round(f/cur.f0)), d = f - n*cur.f0;
+        a = (1/n) * (F?resp(n*cur.f0,F):1) * Math.exp(-(d*d)/(2*sig*sig));
+      }
+      a *= Math.pow(Math.max(f,50)/1000, 0.9);
+      const L = Math.max(0, Math.min(1, (20*Math.log10(Math.max(a,1e-6)) + 46) / 30));
+      const v = Math.round(255 * (1 - L));
+      for (let x=0; x<px; x++){ const o = (y*px+x)*4; img.data[o]=v; img.data[o+1]=v; img.data[o+2]=v; img.data[o+3]=255; }
+    }
+    offx.putImageData(img, w-px, 0);
+  }
+  function drawSpg(){
+    const c = cx.spg, {W,H} = c;
+    c.clearRect(0,0,W,H);
+    c.drawImage(off, 0, 0, W, H);
+    c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(0,0,30,H);
+    c.fillStyle = COL.muted; c.font = '11px "Atkinson Hyperlegible", system-ui, sans-serif'; c.textAlign = 'left';
+    for (let k=1;k<=4;k++){ const y = H*(1-k*1000/FMAX); c.fillText(k+'k', 4, Math.max(11,y+4)); }
+    c.fillText('Hz', 4, H-4);
+    if (S.labels && !S.nofilter){
+      c.textAlign = 'right'; c.font = '700 12px "Atkinson Hyperlegible", system-ui, sans-serif';
+      cur.F.forEach((f,k) => {
+        const y = H*(1-f/FMAX);
+        c.fillStyle = 'rgba(255,255,255,.9)'; c.fillRect(W-32, y-9, 30, 17);
+        c.fillStyle = COL.fil; c.fillText('F'+(k+1)+' ◂', W-4, y+4);
+      });
+      c.textAlign = 'left';
+    }
+  }
+
+  /* ---------- audio ---------- */
+  let A = null;
+  function initAudio(){
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = S.f0;
+    const nb = ctx.createBuffer(1, ctx.sampleRate*2, ctx.sampleRate), d = nb.getChannelData(0);
+    for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+    const noise = ctx.createBufferSource(); noise.buffer = nb; noise.loop = true;
+    const gOsc = ctx.createGain(), gNoise = ctx.createGain(), bus = ctx.createGain();
+    osc.connect(gOsc); noise.connect(gNoise); gOsc.connect(bus); gNoise.connect(bus);
+    const filt = ctx.createGain(), bypass = ctx.createGain(), master = ctx.createGain();
+    master.gain.value = 0;
+    const bp = [0,1,2].map(k => { const b = ctx.createBiquadFilter(); b.type='bandpass'; const g = ctx.createGain(); g.gain.value = GAIN[k]*3; bus.connect(b); b.connect(g); g.connect(filt); return b; });
+    bus.connect(bypass); filt.connect(master); bypass.connect(master); master.connect(ctx.destination);
+    osc.start(); noise.start();
+    A = {ctx, osc, gOsc, gNoise, filt, bypass, master, bp};
+    updateAudio(true);
+  }
+  function updateAudio(now){
+    if (!A) return;
+    const t = A.ctx.currentTime, tc = now ? 0.001 : 0.04;
+    const F = VOWELS[S.vowel].F;
+    A.osc.frequency.setTargetAtTime(S.f0, t, tc);
+    A.bp.forEach((b,k) => { b.frequency.setTargetAtTime(F[k], t, 0.06); b.Q.setTargetAtTime(F[k]/BW[k], t, 0.06); });
+    A.gOsc.gain.setTargetAtTime(S.whisper?0:1, t, tc);
+    A.gNoise.gain.setTargetAtTime(S.whisper?0.5:0, t, tc);
+    A.filt.gain.setTargetAtTime(S.nofilter?0:1, t, tc);
+    A.bypass.gain.setTargetAtTime(S.nofilter?0.45:0, t, tc);
+    A.master.gain.setTargetAtTime(S.playing?0.18:0, t, 0.05);
+  }
+  $('play').onclick = async () => {
+    try {
+      if (!A) initAudio();
+      await A.ctx.resume();
+      S.playing = !S.playing;
+      $('play').textContent = S.playing ? 'Stop' : 'Play';
+      $('msg').textContent = '';
+      updateAudio();
+    } catch(e){ $('msg').textContent = 'Sound could not start in this browser. The pictures still work.'; }
+  };
+
+  /* ---------- controls ---------- */
+  $('f0').oninput = e => { S.f0 = +e.target.value; $('f0r').textContent = S.f0+' Hz'; updateAudio(); };
+  $('whisper').onchange = e => { S.whisper = e.target.checked; updateAudio(); caps(); };
+  $('nofilter').onchange = e => { S.nofilter = e.target.checked; updateAudio(); caps(); };
+  $('labels').onchange = e => { S.labels = e.target.checked; };
+  function caps(){
+    $('srcCap').textContent = S.whisper ? 'breath noise: no harmonics, no pitch' : 'the buzz: evenly spaced harmonics';
+    const v = VOWELS[S.vowel];
+    $('filCap').textContent = S.nofilter ? 'switched off' : `tongue and lips set for [${v.ipa}] (${v.kw})`;
+  }
+
+  /* ---------- loop ---------- */
+  let last = performance.now();
+  function frame(t){
+    const dt = Math.min(0.1, (t-last)/1000); last = t;
+    const k = 1 - Math.exp(-dt/0.07);
+    const tgt = VOWELS[S.vowel].F;
+    for (let i=0;i<3;i++) cur.F[i] += (tgt[i]-cur.F[i])*k;
+    cur.f0 += (S.f0-cur.f0)*(1-Math.exp(-dt/0.04));
+    nzT += dt; if (nzT > 0.15){ nzT = 0; nz = nz.map(()=>Math.random()); }
+    drawSpectra();
+    acc += dt * 60 * dpr;
+    const px = Math.floor(acc); if (px >= 1){ acc -= px; spgColumn(px); }
+    drawSpg();
+    requestAnimationFrame(frame);
+  }
+  layout(); caps();
+  for (let i=0;i<off.width;i+=4) spgColumn(4);
+  window.addEventListener('resize', () => { layout(); });
+  requestAnimationFrame(frame);
+})();
+</script>
+<footer style="text-align:center; padding:20px;">&copy; 2026 Jason Grafmiller. Made with help of Claude Opus 5.5</footer>
+</body>
+</html>
