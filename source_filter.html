@@ -434,7 +434,7 @@
     rows.forEach(r => {
       const dim = r.n > 0 && !on[r.n];
       c.font = '12px '+FONT; c.fillStyle = MUT;
-      c.fillText(r.n === 0 ? 'All together: what the string really does' : `${['','1st','2nd','3rd','4th'][r.n]} harmonic · vibrates in ${['','one piece','halves','thirds','quarters'][r.n]} · ${r.n*F} Hz${dim?' (off)':''}`, x0, r.y-r.h-8);
+      c.fillText(r.n === 0 ? 'All together: what the vocal folds really do' : `${['','1st','2nd','3rd','4th'][r.n]} harmonic · vibrates in ${['','one piece','halves','thirds','quarters'][r.n]} · ${r.n*F} Hz${dim?' (off)':''}`, x0, r.y-r.h-8);
       if (r.n) badge(c, r.n, 14, r.y, dim);
       c.globalAlpha = dim ? .35 : 1;
       c.setLineDash([3,3]); c.strokeStyle = LN; c.beginPath(); c.moveTo(x0,r.y); c.lineTo(x1,r.y); c.stroke(); c.setLineDash([]);
