@@ -51,6 +51,15 @@
   .note > b:first-child{display:block;margin-bottom:4px}
   .note ul{margin:4px 0 0;padding-left:18px}
   .foot{font-size:.8rem;color:var(--muted);margin-top:14px;line-height:1.4}
+.harm{margin-top:18px}
+  .harm-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:14px;margin-top:6px}
+  @media (max-width:760px){.harm-grid{grid-template-columns:1fr}}
+  .harm-ctl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:10px;font-size:.92rem}
+  .harm-ctl label{display:flex;align-items:center;gap:5px;cursor:pointer}
+  .harm-text{line-height:1.5;font-size:.95rem}
+  .harm-text p{margin:8px 0 0}
+  .harm-text ul{margin:6px 0 0;padding-left:18px}
+  .num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--src);color:#fff;font-size:.72rem;font-weight:700;vertical-align:1px}
 </style>
 </head>
 <body>
@@ -117,6 +126,35 @@
     </div>
     <div class="note"><b><span class="key" style="background:var(--src)"></span> The source</b>The vocal folds open and close many times a second. That gives a buzz made of a stack of harmonics: the lowest is the pitch (F0), and the others sit at 2×, 3×, 4× … above it. On its own it sounds like a kazoo, not a vowel. Tick <i>Buzz only</i> to hear it.</div>
     <div class="note"><b><span class="key" style="background:var(--fil)"></span> The filter</b>Your mouth and throat are a tube that resonates at some frequencies more than others. Those peaks are called <b>formants</b>. Moving your tongue and lips changes the tube's shape, so the peaks move. Low F1 means a high tongue, as in <i>fleece</i>. High F2 means a front tongue.</div>
+  </section>
+
+  <section class="panel harm" id="harmonics">
+    <h2><span class="key" style="background:var(--src)"></span>Where do the harmonics come from? <small>a closer look at the Source plot</small></h2>
+    <div class="harm-grid">
+      <div>
+        <canvas id="hString" aria-label="Animated vibrating string: the combined vibration and the first four harmonics"></canvas>
+        <div class="harm-ctl">
+          <button id="hPlay">Pause</button>
+          <label><input type="checkbox" data-h="1" checked><span class="num">1</span></label>
+          <label><input type="checkbox" data-h="2" checked><span class="num">2</span></label>
+          <label><input type="checkbox" data-h="3" checked><span class="num">3</span></label>
+          <label><input type="checkbox" data-h="4" checked><span class="num">4</span></label>
+        </div>
+      </div>
+      <div>
+        <canvas id="hSpec" aria-label="The first four harmonics as bars, a zoomed-in view of the Source plot"></canvas>
+        <div class="harm-text">
+          <p>A vibrating string or the vocal folds don't wobble in just one way. They vibrate as a whole, in halves, in thirds, in quarters and so on, all at the same time. Each of these patterns is a <b>harmonic</b>. The top line shows them all added together, which is what really happens.</p>
+          <p><b>How the Source plot shows them:</b> each harmonic becomes one vertical bar.</p>
+          <ul>
+            <li><b>Left to right</b> = how fast it vibrates (its frequency). Harmonic <span class="num">2</span> vibrates twice as fast as <span class="num">1</span>, so its bar sits twice as far along. That's why the bars are evenly spaced.</li>
+            <li><b>Height</b> = how strong it is. The higher harmonics are weaker, so the bars get shorter.</li>
+            <li>Bar <span class="num">1</span> is the pitch (F0). Move the pitch slider at the top of the page and all the bars shift together.</li>
+          </ul>
+          <p>Real voices have dozens of harmonics, not four, which is why the Source plot shows a long row of bars.</p>
+        </div>
+      </div>
+    </div>
   </section>
   <h2>Position of English monophthong vowels</h2>
   <img src="vowel_chart_f1_f2.svg" alt="F1 by F2 vowel chart of ten English monophthongs (Peterson & Barney 1952 averages)" style="display:block;width:100%;max-width:700px;margin:18px auto 0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px">
@@ -359,6 +397,84 @@
   for (let i=0;i<off.width;i+=4) spgColumn(4);
   window.addEventListener('resize', () => { layout(); });
   requestAnimationFrame(frame);
+})();
+</script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const css = getComputedStyle(document.documentElement), C = k => css.getPropertyValue(k).trim();
+  const SRC = C('--src'), INK = C('--ink'), MUT = C('--muted'), LN = C('--line');
+  const on = {1:true,2:true,3:true,4:true};
+  document.querySelectorAll('#harmonics input[data-h]').forEach(b => b.onchange = () => { on[b.dataset.h] = b.checked; });
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let playing = !reduce, t = 0.6, last = performance.now();
+  $('hPlay').textContent = playing ? 'Pause' : 'Play';
+  $('hPlay').onclick = () => { playing = !playing; $('hPlay').textContent = playing ? 'Pause' : 'Play'; };
+  const cs = $('hString'), sp = $('hSpec'); let a, b;
+  function size(){
+    const d = devicePixelRatio || 1;
+    for (const [cv, h] of [[cs, 352], [sp, 170]]){
+      const w = cv.clientWidth || 320; cv.width = w*d; cv.height = h*d; cv.style.height = h+'px';
+      const x = cv.getContext('2d'); x.setTransform(d,0,0,d,0,0); x.W = w; x.H = h;
+      cv === cs ? a = x : b = x;
+    }
+  }
+  const f0 = () => +($('f0') ? $('f0').value : 120);
+  const shape = (n,x,tt) => Math.sin(n*Math.PI*x) * Math.cos(n*tt) / n;
+  const FONT = '"Atkinson Hyperlegible", system-ui, sans-serif';
+  function badge(c, n, x, y, dim){
+    c.globalAlpha = dim ? .35 : 1; c.fillStyle = SRC; c.beginPath(); c.arc(x, y, 9, 0, 7); c.fill();
+    c.fillStyle = '#fff'; c.font = '700 11px '+FONT; c.textAlign = 'center'; c.fillText(n, x, y+4); c.textAlign = 'left'; c.globalAlpha = 1;
+  }
+  function drawString(){
+    const c = a, {W,H} = c; c.clearRect(0,0,W,H);
+    const x0 = 34, x1 = W-12, F = f0();
+    const rows = [{y:56,h:34,n:0},{y:146,h:15,n:1},{y:204,h:15,n:2},{y:262,h:15,n:3},{y:320,h:15,n:4}];
+    c.strokeStyle = LN; c.lineWidth = 1; c.beginPath(); c.moveTo(0,104); c.lineTo(W,104); c.stroke();
+    rows.forEach(r => {
+      const dim = r.n > 0 && !on[r.n];
+      c.font = '12px '+FONT; c.fillStyle = MUT;
+      c.fillText(r.n === 0 ? 'All together: what the string really does' : `${['','1st','2nd','3rd','4th'][r.n]} harmonic · vibrates in ${['','one piece','halves','thirds','quarters'][r.n]} · ${r.n*F} Hz${dim?' (off)':''}`, x0, r.y-r.h-8);
+      if (r.n) badge(c, r.n, 14, r.y, dim);
+      c.globalAlpha = dim ? .35 : 1;
+      c.setLineDash([3,3]); c.strokeStyle = LN; c.beginPath(); c.moveTo(x0,r.y); c.lineTo(x1,r.y); c.stroke(); c.setLineDash([]);
+      c.fillStyle = INK; [x0,x1].forEach(x => { c.beginPath(); c.arc(x, r.y, 3, 0, 7); c.fill(); });
+      c.strokeStyle = r.n ? SRC : INK; c.lineWidth = r.n ? 2 : 2.5; c.beginPath();
+      for (let k=0;k<=200;k++){
+        const x = k/200; let v = 0;
+        if (r.n === 0){ for (let n=1;n<=4;n++) if (on[n]) v += shape(n,x,t); v /= 1.6; }
+        else if (!dim) v = shape(r.n,x,t);
+        const px = x0+(x1-x0)*x, py = r.y - v*r.h; k ? c.lineTo(px,py) : c.moveTo(px,py);
+      }
+      c.stroke(); c.globalAlpha = 1;
+    });
+  }
+  function drawSpec(){
+    const c = b, {W,H} = c; c.clearRect(0,0,W,H);
+    const L = 12, R = W-12, base = H-26, top = 30, F = f0(), fmax = 4.6*F;
+    const fx = f => L + (R-L)*f/fmax;
+    c.font = '12px '+FONT; c.fillStyle = MUT; c.fillText('Zoomed in on the start of the Source plot (frequency →)', L, 14);
+    c.strokeStyle = LN; c.lineWidth = 1; c.beginPath(); c.moveTo(L, base+.5); c.lineTo(R, base+.5); c.stroke();
+    c.textAlign = 'center'; c.font = '11px '+FONT;
+    c.fillText('0', fx(0)+4, H-8);
+    for (let n=1;n<=4;n++){
+      const x = fx(n*F), dim = !on[n];
+      c.font = '11px '+FONT; c.fillStyle = MUT; c.fillText(n*F+' Hz', x, H-8);
+      c.globalAlpha = dim ? .25 : 1;
+      if (dim){ c.setLineDash([3,3]); c.strokeStyle = SRC; c.lineWidth = 1.5; }
+      else { c.strokeStyle = SRC; c.lineWidth = 6; c.lineCap = 'round'; }
+      const h = (base-top-14) * (1/n) * (dim ? 1 : (.75 + .25*Math.abs(Math.cos(n*t))));
+      c.beginPath(); c.moveTo(x, base-1); c.lineTo(x, base-1-h); c.stroke(); c.setLineDash([]);
+      c.globalAlpha = 1; badge(c, n, x, base-1-h-16, dim);
+    }
+    c.textAlign = 'left';
+  }
+  function loop(now){
+    const dt = Math.min(.05, (now-last)/1000); last = now;
+    if (playing) t += dt * 3;
+    drawString(); drawSpec(); requestAnimationFrame(loop);
+  }
+  size(); addEventListener('resize', size); requestAnimationFrame(loop);
 })();
 </script>
 <footer style="text-align:center; padding:20px;">&copy; 2026 Jason Grafmiller. Made with help of Claude Opus 5.5</footer>
