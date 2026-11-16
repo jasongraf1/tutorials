@@ -56,7 +56,7 @@
 <body>
 <main>
   <h1>How we make vowels: source + filter</h1>
-  <p class="sub">Your voice has two separate parts. The <b>source</b> is the buzz from your vocal folds, and it sets the pitch. The <b>filter</b> is the shape of your mouth and throat, and it determines the vowel you hear. Change one and the other stays the same. Press <b>Play</b> and try it.</p>
+  <p class="sub">Your voice has two separate parts. The <b>source</b> is the buzz from your vocal folds, and it sets the pitch. The <b>filter</b> is the shape of your mouth and throat, and it sets the vowel. Change one and the other stays the same. Press <b>Play</b> and try it.</p>
 
   <div class="controls" style="margin-top:0">
     <div class="group">
@@ -106,7 +106,7 @@
       <canvas id="cSpg" aria-label="Scrolling spectrogram of the output"></canvas>
     </div>
   </div>
-
+        <p class="foot">The formant values are approximate adult averages from Peterson &amp; Barney (1952), based on American English. Your own vowels may be different. For example, many British speakers have a much fronter GOOSE vowel, with a higher F2. The sound is a simple synthesis, so expect it to sound a bit robotic.</p>
   <section class="notes">
     <div class="note"><b>Try this</b>
       <ul>
@@ -118,7 +118,8 @@
     <div class="note"><b><span class="key" style="background:var(--src)"></span> The source</b>The vocal folds open and close many times a second. That gives a buzz made of a stack of harmonics: the lowest is the pitch (F0), and the others sit at 2×, 3×, 4× … above it. On its own it sounds like a kazoo, not a vowel. Tick <i>Buzz only</i> to hear it.</div>
     <div class="note"><b><span class="key" style="background:var(--fil)"></span> The filter</b>Your mouth and throat are a tube that resonates at some frequencies more than others. Those peaks are called <b>formants</b>. Moving your tongue and lips changes the tube's shape, so the peaks move. Low F1 means a high tongue, as in <i>fleece</i>. High F2 means a front tongue.</div>
   </section>
-  <p class="foot">The formant values are approximate adult averages from Peterson &amp; Barney (1952), based on American English. Your own vowels may be different. For example, many British speakers have a much fronter GOOSE vowel, with a higher F2. The sound is a simple synthesis, so expect it to sound a bit robotic.</p>
+  <h2>Position of English monophthong vowels</h2>
+  <img src="vowel_chart_f1_f2.svg" alt="F1 by F2 vowel chart of ten English monophthongs (Peterson & Barney 1952 averages)" style="display:block;width:100%;max-width:700px;margin:18px auto 0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px">
 </main>
 
 <script>
