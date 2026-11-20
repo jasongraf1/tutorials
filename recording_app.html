@@ -37,6 +37,28 @@
   ul.files li { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid #eceff3; }
   .ok { color:var(--ok); } .bad { color:var(--rec); } .pending { color:var(--muted); }
   .hint { font-size:.85rem; color:var(--muted); text-align:center; }
+  /* Custom text panel + display */
+  details.custom { margin:16px 0 0; border:1px solid #dfe3ea; border-radius:8px; padding:0 12px; }
+  details.custom summary { cursor:pointer; font-weight:600; padding:12px 0; }
+  details.custom[open] { padding-bottom:12px; }
+  details.custom label { margin-top:12px; }
+  details.custom label.inline { display:flex; gap:8px; align-items:center; font-weight:400; margin:6px 0; }
+  fieldset.mode { border:0; padding:0; margin:0; }
+  fieldset.mode legend { font-weight:600; padding:0; margin-bottom:4px; }
+  textarea { width:100%; min-height:140px; font:inherit; font-size:1rem; padding:10px 12px; border:1px solid #c9cfd8; border-radius:8px; resize:vertical; }
+  input[type=file] { font:inherit; font-size:.95rem; max-width:100%; }
+  .small { font-size:.88rem; color:var(--muted); margin:6px 0 0; }
+  :focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+  ol.words.long { grid-template-columns:1fr; }
+  ol.words.long li { font-weight:600; }
+  .single { margin:16px 0 8px; text-align:center; }
+  .single-count { color:var(--muted); font-size:.95rem; min-height:1.4em; }
+  .single-item { min-height:4.5em; display:flex; align-items:center; justify-content:center; padding:12px 8px; margin:8px 0;
+                 border:2px solid #e3e7ee; border-radius:12px; font-size:clamp(1.6rem, 8vw, 2.6rem); font-weight:700; line-height:1.3; overflow-wrap:anywhere; }
+  .single-item.long { font-size:clamp(1.15rem, 5vw, 1.6rem); font-weight:600; }
+  .single-item.waiting { font-size:1rem; font-weight:400; color:var(--muted); }
+  button.big { min-width:180px; min-height:56px; font-size:1.15rem; }
+  .passage { white-space:pre-wrap; font-size:clamp(1.05rem, 4.2vw, 1.25rem); line-height:1.75; margin:16px 0 8px; padding:4px 2px; overflow-wrap:anywhere; }
 </style>
 </head>
 <body>
@@ -48,6 +70,23 @@
     <p id="intro"></p>
     <label for="pid" id="idLabel">Student ID</label>
     <input id="pid" type="text" autocomplete="off" placeholder="e.g. 2301234 or J.Smith">
+    <details class="custom" id="customPanel" hidden>
+      <summary>Use your own text (optional)</summary>
+      <p class="small">Leave this empty to use the standard list.</p>
+      <fieldset class="mode">
+        <legend>Show it as</legend>
+        <label class="inline"><input type="radio" name="mode" value="list" checked> A list (one word or phrase per line)</label>
+        <label class="inline"><input type="radio" name="mode" value="passage"> A passage (normal running text)</label>
+      </fieldset>
+      <label for="customText">Type or paste your text</label>
+      <textarea id="customText" dir="auto" spellcheck="false"></textarea>
+      <label for="customFile">…or open a .txt file</label>
+      <input id="customFile" type="file" accept=".txt,text/plain">
+      <label for="customName">Short name for this text (used in file names)</label>
+      <input id="customName" type="text" autocomplete="off" placeholder="e.g. rainbow">
+      <p class="small" id="customInfo" aria-live="polite"></p>
+      <div class="row"><button id="customClear" type="button">Clear</button></div>
+    </details>
     <label class="consent"><input id="consent" type="checkbox"> <span id="consentText"></span></label>
     <div class="row"><button id="startBtn" class="primary" disabled>Start</button></div>
     <div id="startStatus" class="status"></div>
@@ -57,7 +96,13 @@
   <section id="sRec" class="card" hidden>
     <div class="progress" id="progress"></div>
     <div class="instr" id="instr"></div>
-    <ol class="words" id="wordList"></ol>
+    <ol class="words" id="wordList" dir="auto"></ol>
+    <div class="passage" id="passage" dir="auto" hidden></div>
+    <div class="single" id="single" hidden>
+      <div class="single-count" id="itemCount"></div>
+      <div class="single-item" id="itemText" dir="auto" aria-live="polite"></div>
+      <div class="row"><button id="itemNextBtn" class="primary big" disabled>Next &rarr;</button></div>
+    </div>
     <div class="meter"><div id="meterBar"></div></div>
     <div class="row"><button id="recBtn">Record</button></div>
     <div class="status" id="recStatus"></div>
@@ -66,7 +111,7 @@
       <button id="playBtn" disabled>&#9654; Play</button>
       <button id="nextBtn" class="primary" disabled>Next &rarr;</button>
     </div>
-    <p class="hint">Desktop: press the space bar to start/stop recording.</p>
+    <p class="hint" id="recHint">Desktop: press the space bar to start/stop recording.</p>
   </section>
 
   <!-- Finish screen -->
@@ -86,7 +131,8 @@
 /* ================== CONFIGURATION – edit this part ================== */
 const CONFIG = {
   title: "Word list recording",
-  intro: "Thank you for helping out with this activity! You'll see a list of words. Read the whole list aloud from start to finish, then do it again: three readings in total, each recorded separately. You can play back and re-record each reading. Please use a quiet room.",
+  // {repeatNote} is filled in automatically from the number of repetitions (empty when it's 1).
+  intro: "Thank you for helping out with this activity! You'll be asked to read some words aloud.{repeatNote} You can play back and re-record before moving on. Please use a quiet room.",
   idLabel: "Name or student ID",
   consentText: "I agree to my recordings being stored and used for teaching purposes in this module.",
 
@@ -99,8 +145,28 @@ const CONFIG = {
   // Optional OneDrive "Request files" link – shown as a backup way to hand in the zip.
   requestFilesUrl: "",
 
-  repetitions: 3,          // number of separate readings of the whole list
-  maxSeconds: 180,         // auto-stop safety limit per reading
+  // Number of separate readings (one WAV each). Can be overridden in the page URL with ?reps=3
+  repetitions: 1,
+  maxSeconds: 180,         // auto-stop safety limit per reading (raised automatically for long texts)
+
+  // How the text is shown during recording. Can be overridden in the page URL with ?show=one or ?show=all
+  //   "all" = whole list/passage on screen at once
+  //   "one" = one item at a time, all in a single recording. Lists show one item per screen;
+  //           passages show one line per screen (put each sentence on its own line).
+  presentation: "all",
+  // Only for "one": seconds per item before the next appears automatically.
+  // 0 = participant moves on themselves (Next button, Enter, → or space bar).
+  // Can be overridden in the URL with ?auto=2.5
+  autoAdvanceSeconds: 0,
+  oneAtATimeInstructions: "Press Record. One item will appear at a time. Read it aloud, then press Next (or the space bar) for the next one. After the last item, press Next once more to finish the recording.",
+  autoAdvanceInstructions: "Press Record. One item will appear at a time and change by itself every {secs} seconds. Read each one aloud as it appears. The recording stops after the last item.",
+
+  // ---- Custom text ("Use your own text" panel on the start screen) ----
+  allowCustomText: true,   // false = hide the panel; participants only see the lists below
+  customDefaultName: "custom",   // file-name prefix if the user doesn't give the text a name
+  customMaxChars: 10000,   // longest text accepted (typed or uploaded)
+  // Shown instead of readingInstructions when a custom text is displayed as a passage.
+  passageInstructions: "Press Record, read the text aloud from start to finish at a natural pace, then press Stop. If you stumble, just carry on – or re-record if you prefer.",
 
   // Word lists. Choose one with ?list=name in the page URL; the first list is the default.
   lists: {
@@ -111,17 +177,28 @@ const CONFIG = {
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const listName = (params.get("list") && CONFIG.lists[params.get("list")]) ? params.get("list") : Object.keys(CONFIG.lists)[0];
-const WORDS = CONFIG.lists[listName];
+let listName = (params.get("list") && CONFIG.lists[params.get("list")]) ? params.get("list") : Object.keys(CONFIG.lists)[0];
+const DEFAULT_LIST = listName;
+let WORDS = CONFIG.lists[listName];
+let textMode = "list";            // "list" or "passage"
+let passageText = "";             // only used in passage mode
+let textSource = "config list: " + listName;
 
-const REPS = CONFIG.repetitions;
+const urlNum = (k, lo, hi) => { const v = parseFloat(params.get(k)); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null; };
+const REPS = Math.round(urlNum("reps", 1, 20) ?? Math.max(1, CONFIG.repetitions));
+const ONE_AT_A_TIME = (params.get("show") || CONFIG.presentation) === "one";
+const AUTO_SECS = ONE_AT_A_TIME ? (urlNum("auto", 0, 60) ?? CONFIG.autoAdvanceSeconds) : 0;
+let ITEMS = [];                  // what's shown one at a time (list items, or passage lines)
+let itemIdx = -1, recSamples = 0, itemTimes = [], autoTimer = null;
+const takeInfo = [];             // per-reading timing info for the info file
 const state = { pid: "", idx: 0, takes: new Array(REPS).fill(null), uploaded: {}, consentTime: null };
 let ctx, stream, node, chunks = [], recording = false, peak = 0, recPeak = 0, autoStop = null, trackSettings = {};
 
 /* ---------- Start screen ---------- */
 $("title").textContent = CONFIG.title;
 document.title = CONFIG.title;
-$("intro").textContent = CONFIG.intro;
+$("intro").textContent = CONFIG.intro.replace("{repeatNote}",
+  REPS > 1 ? ` You'll do this ${REPS} times, and each reading is recorded separately.` : "");
 $("idLabel").textContent = CONFIG.idLabel;
 $("consentText").textContent = CONFIG.consentText;
 
@@ -130,8 +207,112 @@ function checkStart() { $("startBtn").disabled = !(cleanId($("pid").value) && $(
 $("pid").addEventListener("input", checkStart);
 $("consent").addEventListener("change", checkStart);
 
+/* ---------- Custom text ---------- */
+let customFileName = "";
+const customMode = () => document.querySelector('input[name="mode"]:checked').value;
+const normalise = s => s.replace(/^﻿/, "").replace(/\r\n?/g, "\n").trim();
+function parseItems(s) {
+  let lines = s.split("\n").map(x => x.trim()).filter(Boolean);
+  // A single line with commas or tabs ("cat, dog, bat") is treated as a list too.
+  if (lines.length === 1 && /[,\t]/.test(lines[0])) lines = lines[0].split(/[,\t]/).map(x => x.trim()).filter(Boolean);
+  return lines;
+}
+function updateCustomInfo() {
+  const t = normalise($("customText").value);
+  let msg = "";
+  if (t) {
+    msg = customMode() === "list"
+      ? `${parseItems(t).length} item(s) will be shown.`
+      : `${t.split(/\s+/).length} words will be shown as a passage.`;
+    if (customFileName) msg += ` Loaded from ${customFileName}.`;
+  }
+  $("customInfo").textContent = msg;
+}
+if (CONFIG.allowCustomText) {
+  $("customPanel").hidden = false;
+  $("customText").maxLength = CONFIG.customMaxChars;
+  $("customText").addEventListener("input", () => { customFileName = ""; updateCustomInfo(); });
+  document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener("change", updateCustomInfo));
+  $("customFile").addEventListener("change", async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      if (f.size > CONFIG.customMaxChars * 4) throw new Error("too big");
+      let t = normalise(await f.text());
+      if (t.includes("�")) throw new Error("encoding");
+      if (t.length > CONFIG.customMaxChars) throw new Error("too big");
+      $("customText").value = t;
+      customFileName = f.name;
+      if (!$("customName").value) $("customName").value = cleanId(f.name.replace(/\.[^.]*$/, "")).slice(0, 30);
+      updateCustomInfo();
+    } catch (err) {
+      $("customInfo").textContent = err.message === "encoding"
+        ? "That file isn't plain UTF-8 text. In Notepad or Word, use 'Save as' → Plain text (UTF-8), then try again."
+        : err.message === "too big"
+        ? `That file is too long (limit ${CONFIG.customMaxChars} characters).`
+        : "Couldn't read that file. Try copying and pasting the text instead.";
+    }
+    e.target.value = "";   // allow re-selecting the same file
+  });
+  $("customClear").addEventListener("click", () => {
+    $("customText").value = ""; $("customName").value = ""; customFileName = ""; updateCustomInfo();
+  });
+}
+
+// Called on Start: use the custom text if there is one, otherwise the configured list.
+function applyCustomText() {
+  const t = CONFIG.allowCustomText ? normalise($("customText").value) : "";
+  if (!t) {   // back to the configured list (in case Start was pressed before with custom text)
+    listName = DEFAULT_LIST; WORDS = CONFIG.lists[listName]; textMode = "list"; passageText = "";
+    textSource = "config list: " + listName;
+    return true;
+  }
+  textMode = customMode();
+  listName = cleanId($("customName").value).slice(0, 30) || CONFIG.customDefaultName;
+  textSource = customFileName ? "uploaded file: " + customFileName : "typed/pasted";
+  if (textMode === "list") {
+    WORDS = parseItems(t);
+    if (!WORDS.length) return false;
+  } else {
+    passageText = t;
+    WORDS = t.split(/\s+/);
+  }
+  return true;
+}
+
+function renderText() {
+  $("wordList").innerHTML = "";
+  if (ONE_AT_A_TIME) {
+    ITEMS = textMode === "passage" ? passageText.split("\n").map(x => x.trim()).filter(Boolean) : WORDS.slice();
+    $("wordList").hidden = true;
+    $("passage").hidden = true;
+    $("single").hidden = false;
+    $("itemNextBtn").hidden = AUTO_SECS > 0;
+    $("recHint").textContent = AUTO_SECS > 0
+      ? "Desktop: press the space bar to start/stop recording."
+      : "Desktop: space bar to start, then space bar, Enter or → for the next item.";
+    showItem(-1);
+    return;
+  }
+  if (textMode === "passage") {
+    $("wordList").hidden = true;
+    $("passage").hidden = false;
+    $("passage").textContent = passageText;
+    return;
+  }
+  for (const w of WORDS) { const li = document.createElement("li"); li.textContent = w; $("wordList").appendChild(li); }
+  // Long items (phrases/sentences) get one per row instead of the grid.
+  $("wordList").classList.toggle("long", WORDS.some(w => w.length > 14));
+}
+
 $("startBtn").addEventListener("click", async () => {
   state.pid = cleanId($("pid").value);
+  if (!applyCustomText()) {
+    $("startStatus").className = "status err";
+    $("startStatus").textContent = "Your custom text is empty. Add some text or clear the box.";
+    return;
+  }
+  renderText();
   state.consentTime = new Date().toISOString();
   try {
     await initAudio();
@@ -178,7 +359,7 @@ async function initAudio() {
     let p = 0;
     for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > p) p = a; }
     peak = Math.max(peak * 0.9, p);
-    if (recording) { chunks.push(buf); if (p > recPeak) recPeak = p; }
+    if (recording) { chunks.push(buf); recSamples += buf.length; if (p > recPeak) recPeak = p; }
   };
   if (ctx.audioWorklet && window.AudioWorkletNode) {
     const code = "class R extends AudioWorkletProcessor{process(i){const c=i[0]&&i[0][0];if(c)this.port.postMessage(c.slice(0));return true;}}registerProcessor('rec',R);";
@@ -221,12 +402,16 @@ function encodeWav(parts, sr) {
 
 /* ---------- Recording screen ---------- */
 const fileName = i => `${listName}_${state.pid}_rep${i + 1}.wav`;
-for (const w of WORDS) { const li = document.createElement("li"); li.textContent = w; $("wordList").appendChild(li); }
 
 function showWord() {
   const i = state.idx;
-  $("progress").textContent = `Reading ${i + 1} of ${REPS}`;
-  $("instr").textContent = CONFIG.readingInstructions.replace("{n}", i + 1).replace("{total}", REPS);
+  $("progress").textContent = REPS > 1 ? `Reading ${i + 1} of ${REPS}` : "";
+  $("progress").hidden = REPS === 1;
+  const instr = ONE_AT_A_TIME
+    ? (AUTO_SECS > 0 ? CONFIG.autoAdvanceInstructions : CONFIG.oneAtATimeInstructions)
+    : textMode === "passage" ? CONFIG.passageInstructions : CONFIG.readingInstructions;
+  $("instr").textContent = instr.replace("{n}", i + 1).replace("{total}", REPS).replace("{secs}", AUTO_SECS);
+  if (ONE_AT_A_TIME && !recording) showItem(-1);
   $("prevBtn").disabled = i === 0;
   $("playBtn").disabled = !state.takes[i];
   $("nextBtn").disabled = !state.takes[i];
@@ -235,25 +420,79 @@ function showWord() {
 }
 function setStatus(msg, cls = "") { $("recStatus").className = "status " + cls; $("recStatus").textContent = msg; }
 
+/* One-at-a-time display. k = -1 → waiting to start, k = ITEMS.length → finished. */
+function showItem(k) {
+  itemIdx = k;
+  const box = $("itemText");
+  box.classList.remove("waiting", "long");
+  if (k < 0) {
+    $("itemCount").textContent = `${ITEMS.length} items`;
+    box.textContent = "Press Record to see the first item";
+    box.classList.add("waiting");
+    $("itemNextBtn").disabled = true;
+    $("itemNextBtn").innerHTML = "Next &rarr;";
+  } else if (k >= ITEMS.length) {
+    $("itemCount").textContent = "";
+    box.textContent = "Finished – thank you!";
+    box.classList.add("waiting");
+    $("itemNextBtn").disabled = true;
+  } else {
+    $("itemCount").textContent = `${k + 1} of ${ITEMS.length}`;
+    box.textContent = ITEMS[k];
+    box.classList.toggle("long", ITEMS[k].length > 14);
+    $("itemNextBtn").disabled = false;
+    $("itemNextBtn").innerHTML = k === ITEMS.length - 1 ? "Finish recording" : "Next &rarr;";
+  }
+}
+// Move to the next item, noting when it appeared (seconds from the start of the WAV).
+function advanceItem() {
+  if (!recording || stopping) return;
+  const next = itemIdx + 1;
+  if (next >= ITEMS.length) { showItem(ITEMS.length); stopRec(); return; }
+  itemTimes.push({ index: next + 1, item: ITEMS[next], shownAt: +(recSamples / ctx.sampleRate).toFixed(3) });
+  showItem(next);
+  if (AUTO_SECS > 0) { clearTimeout(autoTimer); autoTimer = setTimeout(advanceItem, AUTO_SECS * 1000); }
+}
+$("itemNextBtn").addEventListener("click", advanceItem);
+
+let stopping = false;
 function startRec() {
   if (ctx.state !== "running") ctx.resume();
-  chunks = []; recPeak = 0; recording = true;
+  chunks = []; recPeak = 0; recSamples = 0; itemTimes = []; recording = true; stopping = false;
   $("recBtn").textContent = "Stop"; $("recBtn").classList.add("recording");
   ["prevBtn", "playBtn", "nextBtn"].forEach(b => $(b).disabled = true);
-  setStatus("Recording… read the whole list, then press Stop.");
-  autoStop = setTimeout(stopRec, CONFIG.maxSeconds * 1000);
+  // Long texts get a longer safety limit (~1 s per word + 30 s; more if auto-advancing).
+  let limit = Math.max(CONFIG.maxSeconds, WORDS.length + 30);
+  if (ONE_AT_A_TIME) {
+    limit = Math.max(limit, ITEMS.length * (AUTO_SECS || 5) + 30);
+    setStatus(AUTO_SECS > 0 ? "Recording… read each item as it appears." : "Recording… read each item, then press Next.");
+    itemIdx = -1;
+    advanceItem();   // first item appears at t = 0
+  } else {
+    setStatus(textMode === "passage" ? "Recording… read the whole text, then press Stop." : "Recording… read the whole list, then press Stop.");
+  }
+  autoStop = setTimeout(stopRec, limit * 1000);
 }
 function stopRec() {
-  if (!recording) return;
-  clearTimeout(autoStop);
+  if (!recording || stopping) return;
+  stopping = true;
+  clearTimeout(autoStop); clearTimeout(autoTimer);
+  const reachedEnd = !ONE_AT_A_TIME || itemIdx >= ITEMS.length;
+  if (ONE_AT_A_TIME) $("itemNextBtn").disabled = true;
   setTimeout(() => {               // short tail so the last word isn't clipped
-    recording = false;
+    recording = false; stopping = false;
     $("recBtn").textContent = "Record"; $("recBtn").classList.remove("recording");
     const blob = encodeWav(chunks, ctx.sampleRate);
     state.takes[state.idx] = blob;
+    takeInfo[state.idx] = {
+      file: fileName(state.idx), durationSec: +(recSamples / ctx.sampleRate).toFixed(3),
+      ...(ONE_AT_A_TIME ? { itemsShown: itemTimes.length, completed: reachedEnd, items: itemTimes } : {})
+    };
     delete state.uploaded[fileName(state.idx)];
     showWord();
-    if (recPeak > 0.98) setStatus("That was too loud (clipped). Move back a little and re-record.", "warn");
+    if (ONE_AT_A_TIME) showItem(reachedEnd ? ITEMS.length : -1);
+    if (!reachedEnd) setStatus(`Stopped at item ${itemTimes.length} of ${ITEMS.length}. Press Record to start again from the beginning, or move on if that's intended.`, "warn");
+    else if (recPeak > 0.98) setStatus("That was too loud (clipped). Move back a little and re-record.", "warn");
     else if (recPeak < 0.03) setStatus("That was very quiet. Check your microphone and re-record.", "warn");
   }, 250);
 }
@@ -268,13 +507,24 @@ $("nextBtn").addEventListener("click", () => {
   else finish();
 });
 document.addEventListener("keydown", e => {
-  if (e.code === "Space" && !$("sRec").hidden) { e.preventDefault(); $("recBtn").click(); }
+  if ($("sRec").hidden || e.repeat) return;
+  // In one-at-a-time (manual) mode, space/Enter/→ move on while recording; Stop stays on the button.
+  if (ONE_AT_A_TIME && !AUTO_SECS && recording && ["Space", "Enter", "NumpadEnter", "ArrowRight"].includes(e.code)) {
+    e.preventDefault(); advanceItem(); return;
+  }
+  if (e.code === "Space") { e.preventDefault(); $("recBtn").click(); }
 });
 
 /* ---------- Finish: upload + zip ---------- */
 function infoFile() {
   const info = {
-    id: state.pid, list: listName, words: WORDS, repetitions: REPS, consent: CONFIG.consentText, consentTime: state.consentTime,
+    id: state.pid, list: listName, textSource, displayMode: textMode,
+    ...(textMode === "passage" ? { text: passageText } : { words: WORDS }), repetitions: REPS,
+    presentation: ONE_AT_A_TIME ? "one at a time" : "all at once", autoAdvanceSeconds: AUTO_SECS,
+    ...(ONE_AT_A_TIME ? { itemsShownOneAtATime: ITEMS } : {}),
+    takes: takeInfo,
+    timingNote: ONE_AT_A_TIME ? "items[].shownAt = seconds from the start of the WAV when the item appeared on screen (accurate to roughly ±50 ms)" : undefined,
+    consent: CONFIG.consentText, consentTime: state.consentTime,
     finished: new Date().toISOString(), sampleRate: ctx.sampleRate, bitDepth: 16, channels: 1,
     micSettings: trackSettings, userAgent: navigator.userAgent
   };
